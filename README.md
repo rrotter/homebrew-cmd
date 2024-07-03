@@ -9,6 +9,13 @@ A collection of added commands for [brew](https://github.com/Homebrew/brew).
 
 ## Commands/Usage
 
+### `brew env`
+Execute `env` in `brew` environment. See [env(1)](https://ss64.com/mac/env.html).
+
+Examples:
+* `brew env` prints brew's environment
+* `brew env foobar` execute command `foobar` with brew's environment.
+
 ### `brew file`
 
 Open Brewfile for editing. Opens global Brewfile if there is no local/project Brewfile in current directory. See `brew file -h` for further usage info.
@@ -18,7 +25,6 @@ Open Brewfile for editing. Opens global Brewfile if there is no local/project Br
 Print a table summarizing installed taps, including information on the current git status.
 
 Sample output:
-
 ```
 ~ % brew taps
 Tap              Size   🍺   🍷 Cmd
