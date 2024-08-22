@@ -1,0 +1,91 @@
+#!/usr/bin/env ruby
+#:  * `bump-k8s`
+#:
+#:  Create new formula for N-1 release of kubernetes-cli. Uses N-2 formula as a
+#:  template. Fetches current N-1 version, tag, and sha from GitHub API, and
+#:  Kubernetes EoL date from https://endoflife.date/kubernetes.
+
+require 'net/http'
+require 'uri'
+require 'json'
+
+def get(url)
+  uri = URI.parse(url)
+  response = Net::HTTP.get_response uri
+  JSON.parse response.body
+end
+
+def latest_releases(repo)
+  releases = get "https://api.github.com/repos/#{repo}/releases"
+  tags = get "https://api.github.com/repos/#{repo}/tags?per_page=100"
+
+  versions = releases.filter{ |x| x["tag_name"] =~ /^v1\.\d+\.\d+$/ }
+                     .map{ |x| x["tag_name"] }
+                     .sort_by{ |v| v.sub("v","").split(".").map{|s| s.to_i} }
+
+  cycles = versions.map{ |x| x.sub(/\.\d+$/,"") }.uniq
+  cycles = cycles.map{|c| [c, versions.filter{|v| v.start_with?(c)}.last]}.to_h
+
+  versions = cycles.values
+  versions = versions.map{ |v|
+    tag = tags.find{|t| t["name"] == v}
+    tag = tag["commit"]["sha"] if tag
+
+    [v, tag]
+  }.to_h
+
+  return versions
+end
+
+def mk_formula(formula, version, prev_version, tag, sha)
+  Dir.chdir(`brew --repo homebrew/core`.chomp) do
+    Dir.chdir("Formula/#{formula[0]}") do
+      puts "cd #{Dir.pwd}"
+      old_file = "#{formula}@#{prev_version}.rb"
+      new_file = "#{formula}@#{version}.rb"
+
+      puts "creating #{new_file}, using #{old_file} as template..."
+      raise "#{new_file} already exists!" if File.exist?(new_file)
+      raise "#{old_file} doesn't exist!" if File.exist?(new_file)
+
+      data = File.read(old_file)
+      data.sub!("AT#{prev_version.sub(".","")}","AT#{version.sub(".","")}")
+      data.gsub!(/v\d+\.\d+\.\d+/, tag)
+      data.gsub!(prev_version.sub(".",'\.'), version.sub(".",'\.'))
+      data.gsub!(prev_version.sub(".","-"), version.sub(".","-"))
+      data.sub!(/revision: .*/,"revision: \"#{sha}\"")
+      data.sub!(/\n *bottle do.*?end\n/m,"")
+      data.gsub!(/\d\d\d\d-\d\d-\d\d/, eol("kubernetes", version))
+
+      File.write(new_file, data)
+      puts "Created #{Dir.pwd}/#{new_file}. Edit before committing!"
+
+      uri = /(?<uri>https:\/\/(www\.)?github\.com\/[^\/]+\/[^\/]+)\.git/.match(data)[:uri]
+      puts
+      puts "Confirm version/revision at: #{uri}/releases"
+
+      uri = data.split.grep(/patch/).first
+      puts
+      puts "Confirm deprecation date at: #{uri}"
+    end
+  end
+end
+
+def eol(product, cycle)
+  cycles = get("https://endoflife.date/api/#{product}.json")
+  cycles.find{|x| x["cycle"] == cycle}["eol"]
+end
+
+repo = "kubernetes/kubernetes"
+versions = latest_releases(repo)
+tag = versions.keys.last(2).first
+sha = versions[tag]
+version = tag.sub(/^v/,"").sub(/\.\d+$/,"")
+prev_version = versions.keys.last(3).first.sub(/^v/,"").sub(/\.\d+$/,"")
+
+formula = "kubernetes-cli"
+begin
+  mk_formula(formula, version, prev_version, tag, sha)
+rescue RuntimeError => e
+  puts "ERROR: #{e}"
+end
