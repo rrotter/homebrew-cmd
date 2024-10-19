@@ -1,3 +1,7 @@
+# ARCHIVED #
+
+Moved to [rattatap/tap](https://github.com/rattatap/homebrew-tap).
+
 # Homebrew Commands
 
 A collection of added commands for [brew](https://github.com/Homebrew/brew).
